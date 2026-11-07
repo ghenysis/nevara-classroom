@@ -1,0 +1,75 @@
+# NEVARA Classroom — Render Blueprint (stack 0 $)
+# Front  → Vercel
+# API    → Render Free (ce fichier)
+# DB     → Supabase (DATABASE_URL)
+# Redis  → Upstash (REDIS_URL)
+#
+# Deploy: Dashboard Render → New → Blueprint → connect repo
+# Secrets (sync: false) saisis dans le dashboard au premier déploiement.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  # ---------------------------------------------------------------------------
+  # API Django (Web Service Free)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: nevara-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    # Après chaque deploy réussi (migrate non bloquant si DB absente au premier build)
+    preDeployCommand: python manage.py migrate --noinput
+    # Pas de healthCheckPath : /api/v1/auth/me/ renvoie 401 sans JWT (Render exige 2xx).
+    autoDeployTrigger: commit
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: core.settings.production
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: USE_POSTGRES
+        value: "1"
+      - key: POSTGRES_SSL
+        value: "true"
+      - key: DB_CONN_MAX_AGE
+        value: "0"
+      # --- Secrets à renseigner dans le Dashboard (ne pas committer) ---
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_CACHE_URL
+        sync: false
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
+
+  # ---------------------------------------------------------------------------
+  # Celery worker — DÉSACTIVÉ en free long terme (consomme un 2e service)
+  # Décommenter uniquement si tu acceptes un 2e service free ou un plan payant.
+  # ---------------------------------------------------------------------------
+  # - type: worker
+  #   name: nevara-celery
+  #   runtime: python
+  #   plan: free
+  #   region: oregon
+  #   rootDir: backend
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: celery -A core worker -l INFO --concurrency=1
+  #   envVars:
+  #     - key: DJANGO_SETTINGS_MODULE
+  #       value: core.settings.production
+  #     - key: DATABASE_URL
+  #       sync: false
+  #     - key: REDIS_URL
+  #       sync: false
+  #     - key: DJANGO_SECRET_KEY
+  #       sync: false
